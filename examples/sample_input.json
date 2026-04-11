@@ -1,0 +1,9 @@
+{
+  "problem": "Help small independent bookstores survive against large online retailers without relying on discounts.",
+  "constraints": [
+    "No price-cutting or deep discounts",
+    "Budget under 5000 USD to start",
+    "Must be doable by a team of 2-3 people"
+  ],
+  "context": "Target: urban independent bookstores in Japan and the US. Owners are time-poor and not highly technical."
+}

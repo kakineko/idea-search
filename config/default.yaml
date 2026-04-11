@@ -1,0 +1,52 @@
+# Idea Search default config
+rounds: 2
+provider: mock
+
+generators:
+  - Proposer
+  - Reframer
+  - Contrarian
+  - AnalogyFinder
+  - ConstraintHacker
+  - Synthesizer
+
+evaluators:
+  - NoveltyJudge
+  - FeasibilityJudge
+  - ValueJudge
+  - RiskJudge
+
+# Synthesizer input selection (round 2+)
+synthesizer:
+  high_novelty_top_k: 3
+  high_feasibility_top_k: 3
+  include_critic_fragments: true
+
+# Similarity / clustering
+similarity:
+  jaccard_threshold: 0.55     # above this -> considered similar
+  cliche_threshold: 0.70      # above this -> cliche flag
+clustering:
+  jaccard_cluster_threshold: 0.40  # ideas below this distance merged
+
+# Final output
+report:
+  per_cluster_top_k: 2
+  max_clusters: 5
+
+# Archive
+archive:
+  path: archive/ideas.jsonl
+
+# Fixed cliché patterns (regex, case-insensitive)
+cliche_patterns:
+  - "ai[- ]?powered?\\s+platform"
+  - "blockchain[- ]?based?\\s+solution"
+  - "uber for"
+  - "airbnb for"
+  - "revolutionary new"
+  - "one[- ]?stop shop"
+  - "gamification"
+  - "disrupt(ing|ive)? the industry"
+  - "netflix for"
+  - "(next[- ]?generation|cutting[- ]?edge)\\s+\\w+"
