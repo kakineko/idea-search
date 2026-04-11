@@ -10,6 +10,43 @@ from idea_search.providers.base import LLMProvider
 # Role-specific idea seeds. Each seed is a (title_template, angle) pair.
 # The mock builds title/statement/rationale from seeds + problem keywords
 # so output is deterministic but role-diverse.
+# Intentionally generic, cliché-ish ideas for the baseline naive path.
+# These stay the same regardless of problem so the structural difference
+# between "one LLM call" and "role-separated system" is visible in reports.
+_BASELINE_SEEDS: List[Dict[str, str]] = [
+    {
+        "title": "Launch an AI-powered platform for the problem",
+        "statement": "Build an AI-powered platform that connects stakeholders and disrupts the industry.",
+        "rationale": "Generic tech-first framing, assumes software is the answer.",
+        "tags": ["ai", "platform", "generic"],
+    },
+    {
+        "title": "Start a loyalty / membership program",
+        "statement": "Introduce a points-based loyalty program to increase repeat engagement.",
+        "rationale": "Default retention playbook.",
+        "tags": ["loyalty", "retention", "generic"],
+    },
+    {
+        "title": "Host community events",
+        "statement": "Run regular community events to build awareness and word of mouth.",
+        "rationale": "Generic marketing playbook.",
+        "tags": ["events", "community", "generic"],
+    },
+    {
+        "title": "Partner with a big brand",
+        "statement": "Form a strategic partnership with a well-known brand to borrow credibility.",
+        "rationale": "Generic BD angle.",
+        "tags": ["partnership", "generic"],
+    },
+    {
+        "title": "Offer a premium subscription tier",
+        "statement": "Monetize via a premium subscription that unlocks curated extras.",
+        "rationale": "Default monetization answer.",
+        "tags": ["subscription", "monetization", "generic"],
+    },
+]
+
+
 _ROLE_SEEDS: Dict[str, List[Dict[str, str]]] = {
     "Proposer": [
         {"angle": "direct-service", "hook": "Offer a curated hands-on service around {keyword}"},
@@ -166,3 +203,61 @@ class MockProvider(LLMProvider):
             "rationale": rationale,
             "suggestion": suggestion,
         }
+
+    def generate_baseline(
+        self,
+        problem: str,
+        constraints: List[str],
+        context: str,
+        n: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """Return generic, templated ideas regardless of problem specifics.
+        Mimics what a naive single LLM call often produces: safe,
+        cliché-sounding answers with little variety.
+        """
+        seeds = _BASELINE_SEEDS[:max(1, n)]
+        kws = _keywords(problem)
+        results: List[Dict[str, Any]] = []
+        for i, seed in enumerate(seeds):
+            kw = kws[i % len(kws)] if kws else "this problem"
+            results.append({
+                "title": seed["title"],
+                "statement": seed["statement"] + f" (target: {kw})",
+                "rationale": seed["rationale"],
+                "tags": list(seed["tags"]),
+            })
+        return results
+
+    def self_critique(
+        self,
+        problem: str,
+        ideas: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Simulate a single model critiquing and revising its own output.
+        Rewrites the most generic-sounding idea with a slightly more
+        specific variant but keeps the overall structure (no role split).
+        """
+        if not ideas:
+            return ideas
+        revised: List[Dict[str, Any]] = []
+        kws = _keywords(problem)
+        kw = kws[0] if kws else "this problem"
+        for i, idea in enumerate(ideas):
+            # Rewrite the first "generic"-tagged idea more concretely
+            if "generic" in idea.get("tags", []) and i == 0:
+                revised.append({
+                    "title": f"Revised: narrow down '{idea['title']}' to one concrete pilot",
+                    "statement": (
+                        f"After self-critique, pick one specific, testable version: "
+                        f"run a 4-week pilot of the previous idea focused strictly on '{kw}' "
+                        f"with one measurable success metric."
+                    ),
+                    "rationale": (
+                        "Self-critique: the original was too generic. Added a concrete "
+                        "timebox and a single metric, but still framed by the same model."
+                    ),
+                    "tags": ["self-critique", "pilot", "narrowed"],
+                })
+            else:
+                revised.append(idea)
+        return revised

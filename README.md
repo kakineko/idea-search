@@ -48,6 +48,35 @@ python -m idea_search run \
 
 `--json` emits the full report to stdout as JSON.
 
+## Compare pipeline variants (baseline vs full system)
+
+Runs several pipeline configurations on the same problem so you can tell
+how much of the result quality comes from the role-separated architecture
+versus a naive single-shot call. The report is Markdown with blank score
+columns for human grading.
+
+```bash
+python -m idea_search compare \
+  --input examples/sample_input.json \
+  --rounds 1 \
+  --out comparison.md
+```
+
+Modes (comma-separated via `--modes`, all 5 by default):
+
+| Mode                      | What it does                                    |
+|---------------------------|-------------------------------------------------|
+| `baseline-single`         | One provider call, N generic ideas, no critique |
+| `baseline-self-critique`  | Single model generates + critiques itself       |
+| `generator-only`          | 6 generator roles, no evaluator/archive/cliché  |
+| `gen-eval`                | Generators + 4-axis evaluators                  |
+| `full`                    | Full Controller pipeline                        |
+
+The report includes **machine diversity metrics** for each mode (unique
+tags, average pairwise Jaccard similarity, greedy cluster count) plus
+**blank score cells** for human-graded **novelty / feasibility /
+actionability** per idea and **variety** per mode.
+
 ## Input format
 
 A JSON file with:

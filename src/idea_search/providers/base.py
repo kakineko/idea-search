@@ -38,3 +38,35 @@ class LLMProvider(ABC):
         idea_statement: str,
     ) -> Dict[str, Any]:
         """Return dict with keys: score (0-5), rationale, suggestion."""
+
+    def generate_baseline(
+        self,
+        problem: str,
+        constraints: List[str],
+        context: str,
+        n: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """Single-shot naive generation. Default falls back to the generic
+        'Proposer' role so providers that don't specialize still work.
+        Returns list of dicts with title, statement, rationale, tags.
+        """
+        return self.generate_ideas(
+            role="Proposer",
+            system_prompt="",
+            problem=problem,
+            constraints=constraints,
+            context=context,
+            round_index=0,
+            prior_fragments=None,
+            n=n,
+        )
+
+    def self_critique(
+        self,
+        problem: str,
+        ideas: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Take a list of idea dicts, produce a revised list via the same
+        model critiquing its own output. Default is a no-op passthrough.
+        """
+        return ideas

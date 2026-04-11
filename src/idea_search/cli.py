@@ -9,7 +9,10 @@ from typing import Any, Dict
 
 import yaml
 
+from idea_search.compare import CompareRunner
+from idea_search.compare_report import render_comparison
 from idea_search.controller import Controller
+from idea_search.modes import Mode
 from idea_search.providers import get_provider
 from idea_search.reporter import build_report, render_console
 from idea_search.schema import ProblemInput
@@ -65,6 +68,34 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+_DEFAULT_COMPARE_MODES = (
+    "baseline-single,baseline-self-critique,generator-only,gen-eval,full"
+)
+
+
+def _cmd_compare(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    if args.rounds is not None:
+        config["rounds"] = args.rounds
+    if args.provider:
+        config["provider"] = args.provider
+
+    problem = load_problem(args.input)
+    provider = get_provider(config.get("provider", "mock"))
+
+    modes = Mode.parse_list(args.modes or _DEFAULT_COMPARE_MODES)
+
+    runner = CompareRunner(provider, config)
+    results = runner.run(problem, modes, baseline_n=args.baseline_n)
+
+    md = render_comparison(problem.problem, results)
+    print(md)
+
+    if args.out:
+        Path(args.out).write_text(md, encoding="utf-8")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="idea-search")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -83,6 +114,26 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--out", type=Path, default=None,
                      help="Write JSON report to this path")
     run.set_defaults(func=_cmd_run)
+
+    cmp = sub.add_parser(
+        "compare", help="Compare pipeline variants on the same problem",
+    )
+    cmp.add_argument("--input", "-i", type=Path, required=True,
+                     help="Path to problem input JSON")
+    cmp.add_argument("--config", "-c", type=Path, default=None,
+                     help="Path to config YAML (defaults to built-in)")
+    cmp.add_argument("--modes", type=str, default=None,
+                     help=("Comma-separated list of modes to run. "
+                           f"Default: {_DEFAULT_COMPARE_MODES}"))
+    cmp.add_argument("--rounds", type=int, default=None,
+                     help="Override rounds (applies to non-baseline modes)")
+    cmp.add_argument("--provider", choices=["mock", "openai", "anthropic"],
+                     default=None, help="Override provider")
+    cmp.add_argument("--baseline-n", type=int, default=3,
+                     help="Number of ideas per baseline mode")
+    cmp.add_argument("--out", type=Path, default=None,
+                     help="Write markdown comparison report to this path")
+    cmp.set_defaults(func=_cmd_compare)
 
     return parser
 
