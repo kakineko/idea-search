@@ -70,3 +70,32 @@ class LLMProvider(ABC):
         model critiquing its own output. Default is a no-op passthrough.
         """
         return ideas
+
+    # -- Hierarchical extension ------------------------------------------
+
+    def decompose_goal(
+        self,
+        goal_statement: str,
+        constraints: List[str],
+        domain_context: List[str],
+        n: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """Decompose a broad goal into N strategy branches.
+        Returns list of dicts with keys: branch_name, branch_description,
+        assumptions, required_capital, required_skill, risk_level,
+        validation_speed, personal_fit, data_availability.
+        """
+        raise NotImplementedError("decompose_goal not implemented")
+
+    def evaluate_branch(
+        self,
+        branch_name: str,
+        branch_description: str,
+        goal_statement: str,
+        domain_context: List[str],
+    ) -> Dict[str, Any]:
+        """Evaluate a branch on 6 axes: upside, cost, risk,
+        validation_speed, personal_fit, data_availability.
+        Returns dict of {axis: {score, rationale, suggestion}}.
+        """
+        raise NotImplementedError("evaluate_branch not implemented")

@@ -119,6 +119,57 @@ def _score(role: str, judge: str, seed: str) -> float:
     return round(max(0.0, min(5.0, val)), 2)
 
 
+# -- Branch seeds for hierarchical goal decomposition -------------------
+# Each seed produces a strategically different branch with varied attributes.
+_BRANCH_SEEDS: List[Dict[str, str]] = [
+    {
+        "name": "Micro-SaaS tool for {keyword}",
+        "desc": "Build a tiny, focused software tool that solves one pain point around {keyword}. {context}",
+        "assumption": "A narrow, paying niche exists around {keyword}",
+        "capital": "low", "skill": "software engineering", "risk": "medium",
+        "speed": "weeks", "fit": "high", "data": "available",
+    },
+    {
+        "name": "Data product / prediction service for {keyword}",
+        "desc": "Package domain data or predictions related to {keyword} as a sellable product. {context}",
+        "assumption": "Usable data related to {keyword} can be sourced",
+        "capital": "low", "skill": "data science", "risk": "medium",
+        "speed": "weeks", "fit": "high", "data": "partial",
+    },
+    {
+        "name": "Expert consulting / freelance around {keyword}",
+        "desc": "Sell expertise on {keyword} as a service. Low startup cost, high margin, limited scale. {context}",
+        "assumption": "User has demonstrable expertise in {keyword}",
+        "capital": "low", "skill": "domain expertise", "risk": "low",
+        "speed": "days", "fit": "medium", "data": "available",
+    },
+    {
+        "name": "Content monetization on {keyword}",
+        "desc": "Create educational or entertaining content about {keyword} and monetize via ads, sponsorship, or paid access. {context}",
+        "assumption": "Audience interest in {keyword} content is sufficient",
+        "capital": "low", "skill": "content creation", "risk": "low",
+        "speed": "weeks", "fit": "medium", "data": "available",
+    },
+    {
+        "name": "Marketplace / brokerage for {keyword}",
+        "desc": "Connect buyers and sellers in the {keyword} space, taking a transaction fee. {context}",
+        "assumption": "Fragmented supply-demand exists around {keyword}",
+        "capital": "medium", "skill": "operations", "risk": "high",
+        "speed": "months", "fit": "low", "data": "scarce",
+    },
+]
+
+# Maps branch description keywords to axis score biases for mock evaluation.
+_BRANCH_ATTR_SCORES: Dict[str, Dict[str, float]] = {
+    "upside":             {"marketplace": 4.5, "saas": 4.0, "data": 3.8, "consult": 3.0, "content": 3.2},
+    "cost":               {"marketplace": 3.5, "saas": 2.0, "data": 1.5, "consult": 1.0, "content": 1.2},
+    "risk":               {"marketplace": 4.0, "saas": 2.5, "data": 2.5, "consult": 1.5, "content": 1.5},
+    "validation_speed":   {"marketplace": 1.5, "saas": 3.5, "data": 3.5, "consult": 4.5, "content": 3.0},
+    "personal_fit":       {"marketplace": 2.0, "saas": 4.0, "data": 4.5, "consult": 3.0, "content": 3.0},
+    "data_availability":  {"marketplace": 2.0, "saas": 3.5, "data": 4.0, "consult": 3.5, "content": 4.0},
+}
+
+
 class MockProvider(LLMProvider):
     name = "mock"
 
@@ -261,3 +312,58 @@ class MockProvider(LLMProvider):
             else:
                 revised.append(idea)
         return revised
+
+    # -- Hierarchical extension ------------------------------------------
+
+    def decompose_goal(
+        self,
+        goal_statement: str,
+        constraints: List[str],
+        domain_context: List[str],
+        n: int = 5,
+    ) -> List[Dict[str, Any]]:
+        kws = _keywords(goal_statement)
+        branches: List[Dict[str, Any]] = []
+        for i, seed in enumerate(_BRANCH_SEEDS[:n]):
+            kw = kws[i % len(kws)] if kws else "the goal"
+            ctx_hint = domain_context[i % len(domain_context)] if domain_context else ""
+            branches.append({
+                "branch_name": seed["name"].format(keyword=kw),
+                "branch_description": seed["desc"].format(keyword=kw, context=ctx_hint),
+                "assumptions": [
+                    seed["assumption"].format(keyword=kw),
+                    f"User has interest/access related to: {ctx_hint}" if ctx_hint else "No specific domain constraint",
+                ],
+                "required_capital": seed["capital"],
+                "required_skill": seed["skill"],
+                "risk_level": seed["risk"],
+                "validation_speed": seed["speed"],
+                "personal_fit": seed["fit"],
+                "data_availability": seed["data"],
+            })
+        return branches
+
+    def evaluate_branch(
+        self,
+        branch_name: str,
+        branch_description: str,
+        goal_statement: str,
+        domain_context: List[str],
+    ) -> Dict[str, Any]:
+        h = int(hashlib.sha256(branch_name.encode()).hexdigest(), 16)
+        attr_scores = _BRANCH_ATTR_SCORES
+        result: Dict[str, Any] = {}
+        for axis, mapping in attr_scores.items():
+            base = 3.0
+            for keyword, bias in mapping.items():
+                if keyword in branch_description.lower() or keyword in branch_name.lower():
+                    base = bias
+                    break
+            jitter = ((h >> (list(attr_scores).index(axis) * 4)) & 0xF) % 7
+            score = round(max(0.0, min(5.0, base + (jitter - 3) * 0.15)), 2)
+            result[axis] = {
+                "score": score,
+                "rationale": f"{axis} assessment for '{branch_name[:40]}'",
+                "suggestion": f"Narrow down the {axis} dimension with a concrete experiment.",
+            }
+        return result

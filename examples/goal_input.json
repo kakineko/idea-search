@@ -1,0 +1,12 @@
+{
+  "goal_statement": "Find realistic ways for one person to make money",
+  "constraints": [
+    "low initial capital",
+    "can be tested within 2 weeks",
+    "should not rely only on commodity LLM usage"
+  ],
+  "domain_context": [
+    "user is interested in AI systems",
+    "user is also interested in Keirin prediction as a hobby"
+  ]
+}

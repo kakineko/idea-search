@@ -9,9 +9,17 @@ from typing import Any, Dict
 
 import yaml
 
+import uuid
+
 from idea_search.compare import CompareRunner
 from idea_search.compare_report import render_comparison
 from idea_search.controller import Controller
+from idea_search.hierarchical.controller import HierarchicalController
+from idea_search.hierarchical.reporter import (
+    render_goal_search,
+    render_hierarchical,
+)
+from idea_search.hierarchical.schema import Goal
 from idea_search.modes import Mode
 from idea_search.providers import get_provider
 from idea_search.reporter import build_report, render_console
@@ -96,6 +104,51 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_goal(path: Path) -> Goal:
+    with Path(path).open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    return Goal(
+        goal_id=data.get("goal_id", uuid.uuid4().hex[:10]),
+        goal_statement=data["goal_statement"],
+        constraints=data.get("constraints", []),
+        domain_context=data.get("domain_context", []),
+    )
+
+
+def _cmd_goal_search(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    if args.provider:
+        config["provider"] = args.provider
+
+    goal = _load_goal(args.input)
+    provider = get_provider(config.get("provider", "mock"))
+    ctrl = HierarchicalController(provider, config)
+    result = ctrl.run_goal_search(goal, n_branches=args.branches)
+
+    print(render_goal_search(result))
+    return 0
+
+
+def _cmd_hierarchical_full(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    if args.rounds is not None:
+        config["rounds"] = args.rounds
+    if args.provider:
+        config["provider"] = args.provider
+
+    goal = _load_goal(args.input)
+    provider = get_provider(config.get("provider", "mock"))
+    ctrl = HierarchicalController(provider, config)
+    result = ctrl.run_hierarchical(
+        goal,
+        n_branches=args.branches,
+        top_k=args.top_k,
+    )
+
+    print(render_hierarchical(result))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="idea-search")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -134,6 +187,37 @@ def build_parser() -> argparse.ArgumentParser:
     cmp.add_argument("--out", type=Path, default=None,
                      help="Write markdown comparison report to this path")
     cmp.set_defaults(func=_cmd_compare)
+
+    # -- Hierarchical commands -------------------------------------------
+    gs = sub.add_parser(
+        "goal-search",
+        help="Decompose a broad goal into branches and evaluate them",
+    )
+    gs.add_argument("--input", "-i", type=Path, required=True,
+                    help="Path to goal input JSON")
+    gs.add_argument("--config", "-c", type=Path, default=None)
+    gs.add_argument("--provider", choices=["mock", "openai", "anthropic"],
+                    default=None)
+    gs.add_argument("--branches", type=int, default=5,
+                    help="Number of branches to generate")
+    gs.set_defaults(func=_cmd_goal_search)
+
+    hf = sub.add_parser(
+        "hierarchical-full",
+        help="Goal → Branch → Method search end-to-end",
+    )
+    hf.add_argument("--input", "-i", type=Path, required=True,
+                    help="Path to goal input JSON")
+    hf.add_argument("--config", "-c", type=Path, default=None)
+    hf.add_argument("--rounds", type=int, default=None,
+                    help="Override rounds for the method-search stage")
+    hf.add_argument("--provider", choices=["mock", "openai", "anthropic"],
+                    default=None)
+    hf.add_argument("--branches", type=int, default=5,
+                    help="Number of branches to generate")
+    hf.add_argument("--top-k", type=int, default=1,
+                    help="Number of top branches to explore with method search")
+    hf.set_defaults(func=_cmd_hierarchical_full)
 
     return parser
 
