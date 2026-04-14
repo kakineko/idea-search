@@ -28,7 +28,13 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Requires Python 3.11+. Dependencies: `pydantic`, `pyyaml`, `pytest`.
+Requires Python 3.11+. Core dependencies: `pydantic`, `pyyaml`, `pytest`.
+
+Optional: install the Anthropic provider to run against a real LLM:
+```bash
+pip install -e ".[anthropic]"
+export ANTHROPIC_API_KEY=sk-ant-...
+```
 
 ## Run (mock provider, no API key)
 
@@ -142,10 +148,67 @@ Two independent checks, either one triggers a flag:
 `providers/base.py` defines `LLMProvider`. V1 ships:
 
 - `MockProvider` — deterministic, no API key, used by default
-- `OpenAIProvider` / `AnthropicProvider` — stubs raising `NotImplementedError`
+- `AnthropicProvider` — real Claude API; requires `ANTHROPIC_API_KEY`
+- `OpenAIProvider` — still a stub raising `NotImplementedError`
 
-To plug in a real LLM, implement `generate_ideas` and `evaluate_axis` in a new
-provider class and register it in `providers/__init__.py`.
+### Using the Anthropic provider
+
+Install the optional dependency and set the key:
+```bash
+pip install -e ".[anthropic]"
+export ANTHROPIC_API_KEY=sk-ant-...
+# Optional: override the model (default: claude-sonnet-4-6)
+export ANTHROPIC_MODEL=claude-haiku-4-5-20251001
+```
+
+Then add `--provider anthropic` to any subcommand:
+```bash
+# Flat idea search
+python -m idea_search run --input examples/sample_input.json --provider anthropic
+
+# Goal decomposition only
+python -m idea_search goal-search --input examples/goal_input.json --provider anthropic
+
+# End-to-end hierarchical search
+python -m idea_search hierarchical-full \
+  --input examples/goal_input.json \
+  --provider anthropic \
+  --rounds 1
+```
+
+Switching back to mock is just `--provider mock` (default). The provider is
+chosen fresh per invocation, so you can diff mock vs anthropic runs on the
+same input.
+
+If `ANTHROPIC_API_KEY` is unset, `--provider anthropic` raises a clear
+runtime error; mock-based commands keep working regardless.
+
+### Mock vs Anthropic — what to look for
+
+The mock provider verifies the pipeline structure but cannot produce
+meaningful semantic output. Its limits:
+
+- Keyword extraction is literal (`for one person to make money` →
+  keywords `find`, `realistic`, `ways`)
+- Branch / idea seeds are templated; they don't reflect domain context
+- Scores are keyword-mapped, not content-aware
+
+Switching to the Anthropic provider lets you verify:
+
+1. **Branch decomposition quality** — do branches become domain-specific
+   and genuinely distinct paths (e.g. `AI-augmented Keirin analytics` vs
+   `Prompt-engineering consulting`), instead of generic templates?
+2. **Branch ranking** — does the ordering shift in ways that make sense
+   given the constraints (e.g. does `validation_speed` actually drop for
+   capital-heavy branches)?
+3. **Method-search specificity** — does each generator role produce
+   ideas that build on the selected branch's assumptions, rather than
+   reusing the same "membership / salon / scarcity" templates?
+
+### Adding another real provider
+
+Implement `LLMProvider` (see `anthropic_provider.py` as a reference) and
+register it in `providers/__init__.py::get_provider`.
 
 ## Tests
 

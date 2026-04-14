@@ -17,6 +17,9 @@ dependencies = [
 dev = [
     "pytest>=7.4",
 ]
+anthropic = [
+    "anthropic>=0.39.0",
+]
 
 [project.scripts]
 idea-search = "idea_search.cli:main"
