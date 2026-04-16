@@ -136,6 +136,10 @@ def _cmd_hierarchical_full(args: argparse.Namespace) -> int:
     if args.provider:
         config["provider"] = args.provider
 
+    weights = None
+    if args.weights:
+        weights = json.loads(args.weights)
+
     goal = _load_goal(args.input)
     provider = get_provider(config.get("provider", "mock"))
     ctrl = HierarchicalController(provider, config)
@@ -143,6 +147,7 @@ def _cmd_hierarchical_full(args: argparse.Namespace) -> int:
         goal,
         n_branches=args.branches,
         top_k=args.top_k,
+        weights=weights,
     )
 
     print(render_hierarchical(result))
@@ -160,7 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Path to config YAML (defaults to built-in)")
     run.add_argument("--rounds", type=int, default=None,
                      help="Override rounds from config")
-    run.add_argument("--provider", choices=["mock", "openai", "anthropic"],
+    run.add_argument("--provider", choices=["mock", "openai", "anthropic", "claude-cli"],
                      default=None, help="Override provider")
     run.add_argument("--json", action="store_true",
                      help="Emit full report as JSON to stdout")
@@ -180,7 +185,7 @@ def build_parser() -> argparse.ArgumentParser:
                            f"Default: {_DEFAULT_COMPARE_MODES}"))
     cmp.add_argument("--rounds", type=int, default=None,
                      help="Override rounds (applies to non-baseline modes)")
-    cmp.add_argument("--provider", choices=["mock", "openai", "anthropic"],
+    cmp.add_argument("--provider", choices=["mock", "openai", "anthropic", "claude-cli"],
                      default=None, help="Override provider")
     cmp.add_argument("--baseline-n", type=int, default=3,
                      help="Number of ideas per baseline mode")
@@ -196,7 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     gs.add_argument("--input", "-i", type=Path, required=True,
                     help="Path to goal input JSON")
     gs.add_argument("--config", "-c", type=Path, default=None)
-    gs.add_argument("--provider", choices=["mock", "openai", "anthropic"],
+    gs.add_argument("--provider", choices=["mock", "openai", "anthropic", "claude-cli"],
                     default=None)
     gs.add_argument("--branches", type=int, default=5,
                     help="Number of branches to generate")
@@ -211,12 +216,14 @@ def build_parser() -> argparse.ArgumentParser:
     hf.add_argument("--config", "-c", type=Path, default=None)
     hf.add_argument("--rounds", type=int, default=None,
                     help="Override rounds for the method-search stage")
-    hf.add_argument("--provider", choices=["mock", "openai", "anthropic"],
+    hf.add_argument("--provider", choices=["mock", "openai", "anthropic", "claude-cli"],
                     default=None)
     hf.add_argument("--branches", type=int, default=5,
                     help="Number of branches to generate")
     hf.add_argument("--top-k", type=int, default=1,
                     help="Number of top branches to explore with method search")
+    hf.add_argument("--weights", type=str, default=None,
+                    help='JSON dict of axis weights, e.g. \'{"upside":2,"cost":-1,"risk":-1,"validation_speed":1,"personal_fit":1.5,"data_availability":1}\'')
     hf.set_defaults(func=_cmd_hierarchical_full)
 
     return parser

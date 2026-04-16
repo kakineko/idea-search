@@ -12,4 +12,7 @@ def get_provider(name: str) -> LLMProvider:
     if name == "anthropic":
         from idea_search.providers.anthropic_provider import AnthropicProvider
         return AnthropicProvider()
+    if name == "claude-cli":
+        from idea_search.providers.claude_cli_provider import ClaudeCLIProvider
+        return ClaudeCLIProvider()
     raise ValueError(f"Unknown provider: {name}")

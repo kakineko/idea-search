@@ -1,0 +1,9 @@
+{
+  "problem": "Find realistic ways for one person to make money",
+  "constraints": [
+    "low initial capital",
+    "can be tested within two weeks",
+    "should not rely only on commodity LLM usage"
+  ],
+  "context": "user prefers opportunities that can be explored systematically; user is interested in AI systems; user wants something actionable rather than only theoretically interesting"
+}
