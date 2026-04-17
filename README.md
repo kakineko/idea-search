@@ -1,26 +1,53 @@
 # idea-search
 
-Multi-role idea search system. Instead of asking a single LLM to produce one
-"best" idea, this MVP separates **generators** (each with a different role and
-bias) from **evaluators** (each scoring a different axis), runs multiple
-rounds, flags clichés, clusters candidates by direction, and returns several
-top ideas from different clusters so a human can pick.
+> **A multi-stage search device that turns an ambiguous question into a
+> diverse set of directional hypothesis candidates.**
 
-## Why
+## Purpose
 
-Single-pass LLM idea generation tends to collapse onto generic, safe,
-cliché-sounding answers. This system:
+* Front stage of a larger pipeline: produce **structured candidates** that
+  feed an automated downstream verification pipeline (not yet built).
+* Helping a human pick a winner is a **secondary** goal, only relevant
+  while the downstream verifier is absent.
+* Built as an **experimental rig**: different generation strategies are
+  available as separate modes so their individual contribution can be
+  isolated by ablation.
 
-- uses 6 generator roles with distinct biases (Proposer, Reframer, Contrarian,
-  AnalogyFinder, ConstraintHacker, Synthesizer)
-- scores each idea independently on **novelty / feasibility / value / risk**,
-  each judge returning a score, short rationale, and one improvement suggestion
-- detects clichés two ways: regex against known patterns, and Jaccard
-  similarity against a local archive
-- keeps multiple directions (clusters) instead of compressing to a single
-  "winner"
+## Two Modes of Operation
 
-## Install
+**Method Search** — given a concrete *problem*, run 6 generator roles +
+4-axis evaluators + archive feedback over multiple rounds and return
+clustered candidates.
+
+```bash
+idea-search run --input examples/sample_input.json
+```
+
+**Hierarchical Search** — given an abstract *goal*, decompose it into
+3–5 strategy branches, evaluate them on 6 axes, then run method search
+on the selected top branch(es).
+
+```bash
+idea-search hierarchical-full --input examples/goal_input.json --branches 5 --top-k 1
+```
+
+There are also two intermediate entrypoints: `idea-search compare` for
+ablation across modes, and `idea-search goal-search` for the
+decomposition stage only.
+
+## Main Hypotheses
+
+* **H1 (main)** — Role-separated generators + archive feedback yield
+  significantly higher *directional diversity* than a single LLM call on
+  the same prompt.
+* The five comparison modes (`baseline-single`, `baseline-self-critique`,
+  `generator-only`, `gen-eval`, `full`) form an ablation ladder that
+  isolates the contribution of role separation, evaluation, and archive.
+
+See [docs/hypothesis.md](docs/hypothesis.md) for the full hypothesis
+table and which mode tests which sub-hypothesis.
+
+## Quick Start
 
 ```bash
 cd /Users/idey/work/idea-search
@@ -28,217 +55,56 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Requires Python 3.11+. Core dependencies: `pydantic`, `pyyaml`, `pytest`.
+Requires Python 3.11+. Core deps: `pydantic>=2.5`, `pyyaml>=6.0`.
 
-Optional: install the Anthropic provider to run against a real LLM:
-```bash
-pip install -e ".[anthropic]"
-export ANTHROPIC_API_KEY=sk-ant-...
-```
-
-## Run (mock provider, no API key)
+Mock provider (no API key, deterministic):
 
 ```bash
+# Method search
 python -m idea_search run --input examples/sample_input.json
-```
 
-Or with overrides:
+# Hierarchical search
+python -m idea_search hierarchical-full \
+  --input examples/goal_input.json --branches 5 --top-k 1
 
-```bash
-python -m idea_search run \
-  --input examples/sample_input.json \
-  --rounds 2 \
-  --provider mock \
-  --out report.json
-```
-
-`--json` emits the full report to stdout as JSON.
-
-## Compare pipeline variants (baseline vs full system)
-
-Runs several pipeline configurations on the same problem so you can tell
-how much of the result quality comes from the role-separated architecture
-versus a naive single-shot call. The report is Markdown with blank score
-columns for human grading.
-
-```bash
+# Ablation across all 5 modes
 python -m idea_search compare \
   --input examples/sample_input.json \
-  --rounds 1 \
-  --out comparison.md
+  --modes baseline-single,baseline-self-critique,generator-only,gen-eval,full
 ```
 
-Modes (comma-separated via `--modes`, all 5 by default):
+Switch provider with `--provider {mock,anthropic,claude-cli}`. See
+[docs/providers.md](docs/providers.md) for tradeoffs and credentials.
 
-| Mode                      | What it does                                    |
-|---------------------------|-------------------------------------------------|
-| `baseline-single`         | One provider call, N generic ideas, no critique |
-| `baseline-self-critique`  | Single model generates + critiques itself       |
-| `generator-only`          | 6 generator roles, no evaluator/archive/cliché  |
-| `gen-eval`                | Generators + 4-axis evaluators                  |
-| `full`                    | Full Controller pipeline                        |
+## Known Limitations
 
-The report includes **machine diversity metrics** for each mode (unique
-tags, average pairwise Jaccard similarity, greedy cluster count) plus
-**blank score cells** for human-graded **novelty / feasibility /
-actionability** per idea and **variety** per mode.
+* Diversity metric is **lexical only** (Jaccard on title + tags); semantic
+  diversity is not captured yet.
+* Generator and evaluator typically share the **same underlying model**,
+  so evaluator scores carry a self-congratulation risk.
+* `baseline-self-critique` is **deliberately weak** and exists as a
+  comparison floor; a stronger baseline is planned.
+* Hierarchical search is **2-stage** (Goal → Branch → Method). Recursive
+  sub-branch expansion is not implemented.
 
-## Input format
+Full list with planned mitigations: [docs/limitations.md](docs/limitations.md).
 
-A JSON file with:
+## Project Status
 
-```json
-{
-  "problem": "Help small independent bookstores survive...",
-  "constraints": ["no discounts", "budget under 5000 USD"],
-  "context": "Urban bookstores in Japan and US"
-}
-```
+Experimental / research-phase. The CLI surface, JSON schemas, and config
+keys are **unstable** and may change without notice. Pin to a specific
+commit if depending on it.
 
-Only `problem` is required.
+## Documentation
 
-## Architecture
-
-```
-              ┌──────────────────────────────────────────┐
-              │              Controller                  │
-              │      (rounds, state, archive)            │
-              └──────┬──────────────────────┬────────────┘
-                     │                      │
-          ┌──────────▼───────────┐ ┌────────▼──────────┐
-          │  Generator Pipeline  │ │ Evaluator Pipeline│
-          │  Proposer            │ │  NoveltyJudge     │
-          │  Reframer            │ │  FeasibilityJudge │
-          │  Contrarian          │ │  ValueJudge       │
-          │  AnalogyFinder       │ │  RiskJudge        │
-          │  ConstraintHacker    │ └───────────────────┘
-          │  Synthesizer*        │
-          └──────────┬───────────┘
-                     │
-          ┌──────────▼───────────┐
-          │ similarity + clichés │  (Jaccard + regex patterns)
-          └──────────┬───────────┘
-                     │
-          ┌──────────▼───────────┐
-          │ clustering + report  │
-          └──────────┬───────────┘
-                     │
-              archive/ideas.jsonl
-```
-
-### Synthesizer input rules
-
-- **Round 1**: receives all ideas from the other generators in this round
-- **Round 2+**: receives curated fragments:
-  - top-N highest **novelty** from previous round
-  - top-N highest **feasibility** from previous round
-  - fragments from critic-broken ideas (low composite or high risk + low feasibility)
-
-### Cliché detection
-
-Two independent checks, either one triggers a flag:
-
-1. Regex match against `cliche_patterns` in config (`ai-powered platform`,
-   `Uber for X`, `disrupt the industry`, …)
-2. Jaccard similarity against prior ideas in the archive exceeding the
-   configured threshold
-
-## Provider abstraction
-
-`providers/base.py` defines `LLMProvider`. V1 ships:
-
-- `MockProvider` — deterministic, no API key, used by default
-- `AnthropicProvider` — real Claude API; requires `ANTHROPIC_API_KEY`
-- `OpenAIProvider` — still a stub raising `NotImplementedError`
-
-### Using the Anthropic provider
-
-Install the optional dependency and set the key:
-```bash
-pip install -e ".[anthropic]"
-export ANTHROPIC_API_KEY=sk-ant-...
-# Optional: override the model (default: claude-sonnet-4-6)
-export ANTHROPIC_MODEL=claude-haiku-4-5-20251001
-```
-
-Then add `--provider anthropic` to any subcommand:
-```bash
-# Flat idea search
-python -m idea_search run --input examples/sample_input.json --provider anthropic
-
-# Goal decomposition only
-python -m idea_search goal-search --input examples/goal_input.json --provider anthropic
-
-# End-to-end hierarchical search
-python -m idea_search hierarchical-full \
-  --input examples/goal_input.json \
-  --provider anthropic \
-  --rounds 1
-```
-
-Switching back to mock is just `--provider mock` (default). The provider is
-chosen fresh per invocation, so you can diff mock vs anthropic runs on the
-same input.
-
-If `ANTHROPIC_API_KEY` is unset, `--provider anthropic` raises a clear
-runtime error; mock-based commands keep working regardless.
-
-### Mock vs Anthropic — what to look for
-
-The mock provider verifies the pipeline structure but cannot produce
-meaningful semantic output. Its limits:
-
-- Keyword extraction is literal (`for one person to make money` →
-  keywords `find`, `realistic`, `ways`)
-- Branch / idea seeds are templated; they don't reflect domain context
-- Scores are keyword-mapped, not content-aware
-
-Switching to the Anthropic provider lets you verify:
-
-1. **Branch decomposition quality** — do branches become domain-specific
-   and genuinely distinct paths (e.g. `AI-augmented Keirin analytics` vs
-   `Prompt-engineering consulting`), instead of generic templates?
-2. **Branch ranking** — does the ordering shift in ways that make sense
-   given the constraints (e.g. does `validation_speed` actually drop for
-   capital-heavy branches)?
-3. **Method-search specificity** — does each generator role produce
-   ideas that build on the selected branch's assumptions, rather than
-   reusing the same "membership / salon / scarcity" templates?
-
-### Adding another real provider
-
-Implement `LLMProvider` (see `anthropic_provider.py` as a reference) and
-register it in `providers/__init__.py::get_provider`.
-
-## Tests
-
-```bash
-pytest
-```
-
-Covers similarity, clustering, archive, mock provider, and a full E2E
-controller run.
-
-## Configuration
-
-`config/default.yaml` controls rounds, thresholds, cliché patterns, and
-clustering. Override via `--config path/to/your.yaml`.
-
-## Not in this MVP
-
-- Web search
-- Real LLM integrations (OpenAI / Anthropic beyond stubs)
-- GUI
-- Distributed execution
-- Embedding-based similarity
-
-## Extension points
-
-- Add a new generator role: drop a system prompt in `roles/prompts.py`, add
-  the role to `generators` in the config, teach the mock provider a seed
-  (optional).
-- Add a new evaluator axis: extend the schema, evaluator pipeline, and the
-  composite formula in `schema.Evaluation.composite`.
-- Swap similarity for embeddings: implement a new `similarity.py` function
-  matching the Jaccard signature.
-- Real LLM provider: implement `LLMProvider` and register in `get_provider`.
+* [docs/hypothesis.md](docs/hypothesis.md) — H1–H4, mode ↔ ablation table,
+  definition of "good output".
+* [docs/architecture.md](docs/architecture.md) — Layer diagram, data flow
+  for both modes, synthesizer and archive roles.
+* [docs/providers.md](docs/providers.md) — mock / anthropic / claude-cli
+  comparison and JSON-reliability strategy.
+* [docs/limitations.md](docs/limitations.md) — Current shortcomings and
+  planned work.
+* `charter.md` — President-level constraints (budget, stop conditions,
+  tone). Loaded by every controller.
+* `README_ja.md` — Japanese version (may lag behind).
