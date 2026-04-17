@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import warnings
+from datetime import date
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from idea_search.charter import (
     Charter,
@@ -43,7 +45,7 @@ def test_load_charter_frontmatter_only(tmp_path: Path):
     )
     c = load_charter(p)
     assert c.version == "2"
-    assert c.last_reviewed_on == "2026-04-17"
+    assert c.last_reviewed_on == date(2026, 4, 17)
     assert c.budget == {"monthly_usd": 50.0, "per_run_usd": None}
     assert c.stop_conditions == {"max_runs_per_day": 20}
     assert c.review_cadence_days == 14
@@ -161,6 +163,98 @@ def test_load_charter_frontmatter_non_mapping_warns(tmp_path: Path):
         warnings.simplefilter("always")
         c = load_charter(p)
     assert any("must be a mapping" in str(w.message) for w in caught)
+    assert c.is_empty()
+
+
+# ---------------------------------------------------------------------------
+# last_reviewed_on date coercion
+# ---------------------------------------------------------------------------
+
+def test_last_reviewed_on_iso_string(tmp_path: Path):
+    """Quoted ISO string is parsed into a date."""
+    p = tmp_path / "charter.md"
+    p.write_text(
+        "---\n"
+        'last_reviewed_on: "2026-04-17"\n'
+        "---\n",
+        encoding="utf-8",
+    )
+    c = load_charter(p)
+    assert c.last_reviewed_on == date(2026, 4, 17)
+
+
+def test_last_reviewed_on_invalid_string(tmp_path: Path):
+    """A non-ISO string is rejected with ValidationError."""
+    p = tmp_path / "charter.md"
+    p.write_text(
+        "---\n"
+        'last_reviewed_on: "not-a-date"\n'
+        "---\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError):
+        load_charter(p)
+
+
+def test_last_reviewed_on_none(tmp_path: Path):
+    """Explicit null in YAML stays None on the model."""
+    p = tmp_path / "charter.md"
+    p.write_text(
+        "---\n"
+        "last_reviewed_on: null\n"
+        "---\n",
+        encoding="utf-8",
+    )
+    c = load_charter(p)
+    assert c.last_reviewed_on is None
+
+
+# ---------------------------------------------------------------------------
+# is_empty semantics
+# ---------------------------------------------------------------------------
+
+def test_is_empty_ignores_meta_fields(tmp_path: Path):
+    """A charter with only version + last_reviewed_on counts as empty."""
+    p = tmp_path / "charter.md"
+    p.write_text(
+        "---\n"
+        "charter_version: 3\n"
+        "last_reviewed_on: 2026-04-17\n"
+        "---\n",
+        encoding="utf-8",
+    )
+    c = load_charter(p)
+    assert c.version == "3"
+    assert c.last_reviewed_on == date(2026, 4, 17)
+    assert c.is_empty()
+
+
+def test_is_empty_false_with_actual_content(tmp_path: Path):
+    """Any real configuration value flips is_empty to False."""
+    p = tmp_path / "charter.md"
+    p.write_text(
+        "---\n"
+        "budget:\n"
+        "  monthly_usd: 30\n"
+        "---\n",
+        encoding="utf-8",
+    )
+    c = load_charter(p)
+    assert not c.is_empty()
+
+
+def test_is_empty_with_only_null_budget_values(tmp_path: Path):
+    """Budget keys present but all-null still counts as empty."""
+    p = tmp_path / "charter.md"
+    p.write_text(
+        "---\n"
+        "budget:\n"
+        "  monthly_usd: null\n"
+        "  per_run_usd: null\n"
+        "---\n",
+        encoding="utf-8",
+    )
+    c = load_charter(p)
     assert c.is_empty()
 
 

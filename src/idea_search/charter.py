@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import re
 import warnings
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -33,30 +34,48 @@ class Charter(BaseModel):
     """
 
     version: Optional[str] = None
-    last_reviewed_on: Optional[str] = None  # ISO-8601 date string
+    last_reviewed_on: Optional[date] = None  # accepts YAML bare date or ISO string
     budget: Dict[str, Optional[float]] = Field(default_factory=dict)
     stop_conditions: Dict[str, Any] = Field(default_factory=dict)
     risk: Dict[str, Any] = Field(default_factory=dict)
     escalation: Dict[str, Any] = Field(default_factory=dict)
+    # Note: YAML floats (e.g. 14.5) are silently truncated by int(); write integers.
     review_cadence_days: Optional[int] = None
     body_sections: Dict[str, str] = Field(default_factory=dict)
     raw_body: str = ""
 
-    def is_empty(self) -> bool:
-        """True when no field carries information.
+    @field_validator("last_reviewed_on", mode="before")
+    @classmethod
+    def _coerce_last_reviewed(cls, v):
+        if v is None or isinstance(v, date):
+            return v
+        if isinstance(v, str):
+            try:
+                return date.fromisoformat(v)
+            except ValueError as e:
+                raise ValueError(
+                    f"last_reviewed_on must be ISO date string (YYYY-MM-DD), "
+                    f"got: {v!r}"
+                ) from e
+        raise ValueError(
+            f"last_reviewed_on must be date or ISO string, "
+            f"got {type(v).__name__}"
+        )
 
-        Used by callers that want to short-circuit a no-op merge.
+    def is_empty(self) -> bool:
+        """True when no *configuration* field carries information.
+
+        Meta-only fields (``version``, ``last_reviewed_on``) are intentionally
+        ignored: a charter that records its own version but specifies nothing
+        actionable still merges as a no-op.
         """
         return (
-            self.version is None
-            and self.last_reviewed_on is None
-            and not self.budget
+            all(v is None for v in self.budget.values())
             and not self.stop_conditions
             and not self.risk
             and not self.escalation
             and self.review_cadence_days is None
             and not self.body_sections
-            and not self.raw_body
         )
 
 
