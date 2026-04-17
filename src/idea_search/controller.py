@@ -5,6 +5,7 @@ import uuid
 from typing import List, Tuple, Dict, Any
 
 from idea_search.archive import ArchiveStore
+from idea_search.charter import load_charter, merge_charter_into_config
 from idea_search.pipeline.generator_pipeline import run_generator_round
 from idea_search.pipeline.evaluator_pipeline import run_evaluator_round
 from idea_search.providers.base import LLMProvider
@@ -15,6 +16,8 @@ class Controller:
     def __init__(self, provider: LLMProvider, config: Dict[str, Any]):
         self.provider = provider
         self.config = config
+        self.charter = load_charter()
+        merge_charter_into_config(self.charter, self.config)
         archive_path = config.get("archive", {}).get("path", "archive/ideas.jsonl")
         self.archive = ArchiveStore(archive_path)
         self.session_id = uuid.uuid4().hex[:8]

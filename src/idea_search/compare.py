@@ -12,6 +12,7 @@ from idea_search.baseline import (
     run_baseline_self_critique,
     run_baseline_single_shot,
 )
+from idea_search.charter import load_charter, merge_charter_into_config
 from idea_search.clustering import cluster_ideas
 from idea_search.controller import Controller
 from idea_search.modes import Mode
@@ -169,6 +170,8 @@ class CompareRunner:
     def __init__(self, provider: LLMProvider, base_config: Dict[str, Any]):
         self.provider = provider
         self.base_config = base_config
+        self.charter = load_charter()
+        merge_charter_into_config(self.charter, self.base_config)
 
     def run(
         self,
