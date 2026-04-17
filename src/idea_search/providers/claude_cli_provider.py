@@ -112,9 +112,26 @@ class ClaudeCLIProvider(LLMProvider):
             text=True,
             timeout=self._timeout_sec,
         )
+        for attempt in range(3):
+            if proc.returncode == 0:
+                break
+            wait = [0, 10, 30][attempt]
+            log.warning(
+                "claude CLI exited %d (attempt %d/3); retrying in %ds. stderr=%s",
+                proc.returncode, attempt + 1, wait, proc.stderr.strip()[:200],
+            )
+            if wait:
+                import time
+                time.sleep(wait)
+            proc = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout_sec,
+            )
         if proc.returncode != 0:
             raise ClaudeCLIProviderError(
-                f"claude CLI exited {proc.returncode}: "
+                f"claude CLI exited {proc.returncode} after 3 attempts: "
                 f"stderr={proc.stderr.strip()[:300]}"
             )
         try:
