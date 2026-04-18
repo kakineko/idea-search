@@ -4,7 +4,8 @@ Extends the existing idea_search.schema without modifying it.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from types import MappingProxyType
+from typing import Dict, List, Mapping, Optional
 
 from pydantic import BaseModel, Field
 
@@ -37,8 +38,10 @@ class BranchAxisEvaluation(BaseModel):
 
 
 # Default axis weights. Positive axes add, negative axes subtract.
-# Exposed as module-level dict so callers can override for experiments.
-BRANCH_AXIS_WEIGHTS: Dict[str, float] = {
+# Exposed as a read-only view so callers cannot mutate global state by
+# accident. To experiment with different weights, pass a fresh dict to
+# ``BranchEvaluation.composite`` or ``select_top_k``.
+_BRANCH_AXIS_WEIGHTS_RAW: Dict[str, float] = {
     "upside": 1.0,
     "cost": -1.0,
     "risk": -1.0,
@@ -46,6 +49,7 @@ BRANCH_AXIS_WEIGHTS: Dict[str, float] = {
     "personal_fit": 1.0,
     "data_availability": 1.0,
 }
+BRANCH_AXIS_WEIGHTS: Mapping[str, float] = MappingProxyType(_BRANCH_AXIS_WEIGHTS_RAW)
 
 
 class BranchEvaluation(BaseModel):
@@ -57,7 +61,7 @@ class BranchEvaluation(BaseModel):
     personal_fit: BranchAxisEvaluation
     data_availability: BranchAxisEvaluation
 
-    def composite(self, weights: Dict[str, float] | None = None) -> float:
+    def composite(self, weights: Mapping[str, float] | None = None) -> float:
         """Weighted composite from evaluated scores only (no string attrs)."""
         w = weights or BRANCH_AXIS_WEIGHTS
         axes = {

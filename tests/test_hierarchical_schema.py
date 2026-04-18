@@ -1,3 +1,5 @@
+import pytest
+
 from idea_search.hierarchical.schema import (
     BRANCH_AXIS_WEIGHTS,
     Branch,
@@ -63,6 +65,45 @@ def test_composite_uses_scores_not_string_attrs():
     # All negative axes = 5*(-1) each (2 axes) = -10
     # Total = 10
     assert ev.composite() == 10.0
+
+
+def test_branch_axis_weights_is_immutable():
+    """Mutating BRANCH_AXIS_WEIGHTS must raise — it is a read-only view."""
+    with pytest.raises(TypeError):
+        BRANCH_AXIS_WEIGHTS["upside"] = 99.0
+    with pytest.raises(TypeError):
+        del BRANCH_AXIS_WEIGHTS["upside"]
+
+
+def test_branch_axis_weights_supports_dict_reads():
+    """Read-side API stays dict-like for callers that iterate or .get()."""
+    assert BRANCH_AXIS_WEIGHTS["upside"] == 1.0
+    assert BRANCH_AXIS_WEIGHTS.get("cost") == -1.0
+    assert BRANCH_AXIS_WEIGHTS.get("missing", 0.0) == 0.0
+    assert set(BRANCH_AXIS_WEIGHTS.keys()) == {
+        "upside", "cost", "risk",
+        "validation_speed", "personal_fit", "data_availability",
+    }
+    assert len(BRANCH_AXIS_WEIGHTS) == 6
+
+
+def test_composite_with_explicit_dict_matches_default():
+    """Passing a fresh dict with identical values yields the same composite."""
+    ev = BranchEvaluation(
+        branch_id="b1",
+        upside=_ax(4.0), cost=_ax(2.0), risk=_ax(1.0),
+        validation_speed=_ax(4.0), personal_fit=_ax(5.0), data_availability=_ax(3.0),
+    )
+    explicit = dict(BRANCH_AXIS_WEIGHTS)
+    assert ev.composite(explicit) == ev.composite()
+
+
+def test_branch_axis_weights_unchanged_after_failed_mutation():
+    """A failed mutation attempt must leave the underlying values intact."""
+    snapshot = dict(BRANCH_AXIS_WEIGHTS)
+    with pytest.raises(TypeError):
+        BRANCH_AXIS_WEIGHTS["upside"] = 99.0
+    assert dict(BRANCH_AXIS_WEIGHTS) == snapshot
 
 
 def test_method_search_input_holds_full_context():
