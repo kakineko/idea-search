@@ -61,6 +61,14 @@ pip install -e ".[dev]"
 
 Requires Python 3.11+. Core deps: `pydantic>=2.5`, `pyyaml>=6.0`.
 
+For contributors running analysis scripts in `scripts/` (embedding
+similarity, etc.), install the optional `[analysis]` extras inside the
+same venv to avoid conflicts with system-wide Python packages:
+
+```bash
+pip install -e ".[analysis]"
+```
+
 Mock provider (no API key, deterministic):
 
 ```bash
