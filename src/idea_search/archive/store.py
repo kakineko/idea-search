@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Iterator, List
+from typing import Iterable, Iterator, Optional
 
 from idea_search.schema import Idea, Evaluation
 
@@ -29,7 +29,18 @@ class ArchiveStore:
         for idea, ev in records:
             self.append(idea, ev, session=session)
 
-    def iter_records(self) -> Iterator[dict]:
+    def clear(self) -> None:
+        """Remove all records from the archive.
+
+        Creates the parent directory if missing and leaves an empty
+        (0-byte) file at ``self.path``. Useful for test isolation and
+        manual resets.
+        """
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text("", encoding="utf-8")
+
+    def iter_records(self, session: Optional[str] = None) -> Iterator[dict]:
+        """Yield records. If ``session`` is given, filter to that session only."""
         if not self.path.exists():
             return
         with self.path.open("r", encoding="utf-8") as f:
@@ -38,13 +49,21 @@ class ArchiveStore:
                 if not line:
                     continue
                 try:
-                    yield json.loads(line)
+                    rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if session is not None and rec.get("session") != session:
+                    continue
+                yield rec
 
-    def iter_idea_texts(self) -> Iterator[tuple[str, str]]:
-        """Yield (idea_id, text) for similarity comparisons."""
-        for rec in self.iter_records():
+    def iter_idea_texts(
+        self, session: Optional[str] = None
+    ) -> Iterator[tuple[str, str]]:
+        """Yield (idea_id, text) for similarity comparisons.
+
+        If ``session`` is given, only records from that session are yielded.
+        """
+        for rec in self.iter_records(session=session):
             idea = rec.get("idea") or {}
             iid = idea.get("id")
             title = idea.get("title", "")

@@ -35,8 +35,11 @@ report:
   max_clusters: 5
 
 # Archive
+# Default: each Controller writes to archive/session_<id>.jsonl, isolated
+# per run. Set `shared: true` to use the legacy archive/ideas.jsonl that
+# accumulates across runs, or set `path` to pin a specific file.
 archive:
-  path: archive/ideas.jsonl
+  shared: false
 
 # Fixed cliché patterns (regex, case-insensitive)
 cliche_patterns:

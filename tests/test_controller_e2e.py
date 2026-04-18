@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from idea_search.controller import Controller
+from idea_search.controller import Controller, _resolve_archive_path
 from idea_search.providers.mock import MockProvider
 from idea_search.reporter import build_report
 from idea_search.schema import ProblemInput
@@ -60,3 +60,79 @@ def test_controller_end_to_end(tmp_path: Path):
     # We expect multiple clusters so the user can compare directions
     assert len(report.clusters) >= 2
     assert len(report.top_per_cluster) >= 2
+
+
+def test_resolve_archive_path_explicit_wins():
+    """An explicit path beats both shared mode and the session default."""
+    p = _resolve_archive_path({"path": "custom/here.jsonl"}, "abcd1234")
+    assert p == "custom/here.jsonl"
+    p = _resolve_archive_path(
+        {"path": "custom/here.jsonl", "shared": True}, "abcd1234"
+    )
+    assert p == "custom/here.jsonl"
+
+
+def test_resolve_archive_path_shared_mode():
+    """shared=true (no explicit path) returns the legacy shared file."""
+    assert _resolve_archive_path({"shared": True}, "abcd1234") == "archive/ideas.jsonl"
+
+
+def test_resolve_archive_path_default_is_session_scoped():
+    """Empty archive config yields archive/session_<id>.jsonl."""
+    assert (
+        _resolve_archive_path({}, "deadbeef")
+        == "archive/session_deadbeef.jsonl"
+    )
+    # shared=false explicit: same as default
+    assert (
+        _resolve_archive_path({"shared": False}, "deadbeef")
+        == "archive/session_deadbeef.jsonl"
+    )
+
+
+def test_controller_default_uses_session_scoped_path(tmp_path: Path, monkeypatch):
+    """With no archive config, Controller.archive.path includes the session_id."""
+    monkeypatch.chdir(tmp_path)
+    config = {"rounds": 1, "provider": "mock"}
+    ctrl = Controller(MockProvider(), config)
+    assert ctrl.session_id in str(ctrl.archive.path)
+    assert str(ctrl.archive.path).startswith("archive/session_")
+    assert ctrl._archive_shared is False
+
+
+def test_controller_shared_mode_uses_legacy_file(tmp_path: Path, monkeypatch):
+    """archive.shared=true points back at archive/ideas.jsonl."""
+    monkeypatch.chdir(tmp_path)
+    config = {"rounds": 1, "provider": "mock", "archive": {"shared": True}}
+    ctrl = Controller(MockProvider(), config)
+    assert str(ctrl.archive.path) == "archive/ideas.jsonl"
+    assert ctrl._archive_shared is True
+
+
+def test_controller_session_isolated_archive_reads(tmp_path: Path):
+    """Two controllers writing to the same shared file see only own session
+    when read back through the per-session helper."""
+    shared = tmp_path / "shared.jsonl"
+    cfg = lambda: {  # noqa: E731
+        "rounds": 1, "provider": "mock",
+        "archive": {"path": str(shared)},  # explicit path, shared=false implicit
+        "generators": ["Proposer"], "evaluators": ["NoveltyJudge"],
+        "synthesizer": {"high_novelty_top_k": 1, "high_feasibility_top_k": 1,
+                        "include_critic_fragments": False},
+        "similarity": {"jaccard_threshold": 0.55, "cliche_threshold": 0.70},
+        "clustering": {"jaccard_cluster_threshold": 0.35},
+        "report": {"per_cluster_top_k": 1, "max_clusters": 3},
+        "cliche_patterns": [],
+    }
+    problem = ProblemInput(problem="p", constraints=[], context=None)
+
+    c1 = Controller(MockProvider(), cfg())
+    c1.run(problem)
+    c2 = Controller(MockProvider(), cfg())
+    # c2 must NOT see c1's records when reading through the session helper
+    own = list(c2._read_archive_texts())
+    assert own == []
+    # But the underlying file does contain c1's writes
+    all_records = list(c2.archive.iter_records())
+    assert len(all_records) > 0
+    assert all(r["session"] == c1.session_id for r in all_records)
