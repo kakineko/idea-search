@@ -8,6 +8,8 @@ version = "0.1.0"
 description = "Multi-role idea search system with separated generators and evaluators"
 readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "kakineko" }]
 dependencies = [
     "pydantic>=2.5",
     "pyyaml>=6.0",

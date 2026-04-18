@@ -1,5 +1,8 @@
 # idea-search
 
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
+
 > **A multi-stage search device that turns an ambiguous question into a
 > diverse set of directional hypothesis candidates.**
 
@@ -50,7 +53,8 @@ table and which mode tests which sub-hypothesis.
 ## Quick Start
 
 ```bash
-cd /Users/idey/work/idea-search
+git clone https://github.com/kakineko/idea-search.git
+cd idea-search
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```

@@ -30,3 +30,12 @@ archive/**
 !archive/.gitkeep
 report.json
 *.log
+
+# Secrets (防止措置、現在ファイルは存在しない)
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+secrets/
